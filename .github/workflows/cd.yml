@@ -11,12 +11,16 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: cd-production
+  cancel-in-progress: false
+
 env:
-  SITE_PATH: 'C:\inetpub\wwwroot\statusboard-backend'
-  BACKUP_ROOT: 'C:\deployments\backups\statusboard-backend'
-  APP_POOL: 'statusboard-backend'
-  HEALTH_URL: 'http://localhost:8888/health'
-  KEEP_BACKUPS: '5'
+  SITE_PATH: ${{ vars.SITE_PATH }}
+  BACKUP_ROOT: ${{ vars.BACKUP_ROOT }}
+  APP_POOL: ${{ vars.APP_POOL }}
+  HEALTH_URL: ${{ vars.HEALTH_URL }}
+  KEEP_BACKUPS: ${{ vars.KEEP_BACKUPS }}
 
 defaults:
   run:
@@ -25,6 +29,8 @@ defaults:
 jobs:
   deploy:
     runs-on: self-hosted
+    environment: production
+    timeout-minutes: 20
     steps:
       - name: Check out the code
         uses: actions/checkout@v4
@@ -117,6 +123,12 @@ jobs:
             }
             exit 1
           }
+
+      - name: Write deployment summary
+        if: success()
+        run: |
+          $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+          "Deployed v${{ github.event.inputs.version }} at $ts" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
   release:
     needs: deploy
