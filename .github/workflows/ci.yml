@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: powershell
+
+jobs:
+  lint:
+    runs-on: self-hosted
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+
+  security:
+    runs-on: self-hosted
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Dependency vulnerability scan
+        run: npm audit --audit-level=high
+
+  test:
+    runs-on: self-hosted
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Unit tests
+        run: npm run test:unit
+      - name: API tests
+        run: npm run test:api
+
+  coverage:
+    needs: [test]
+    runs-on: self-hosted
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run coverage (enforces thresholds)
+        run: npm run test:coverage
+      - name: Publish coverage to the job summary
+        if: always()
+        run: node scripts/coverage-summary.js
+      - name: Upload HTML coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+
+  build:
+    needs: [lint, security, coverage]
+    runs-on: self-hosted
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install production dependencies only
+        run: npm ci --omit=dev
+      - name: Build the deployable package
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path src, node_modules, package.json, web.config -DestinationPath dist/status-backend-ci.zip -Force
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: status-backend-build
+          path: dist/status-backend-ci.zip
